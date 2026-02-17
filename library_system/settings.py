@@ -102,7 +102,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
-    ]
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 10
+
 }
 
 # Celery Configuration
@@ -112,6 +115,16 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    "check_overdue_loans_task": {
+        "task": "library.tasks.check_overdue_loans",
+        "schedule": crontab(hour=0, minute=0)
+    }
+}
+
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'admin@library.com')
+
+LOAN_DUE_DATE = 14

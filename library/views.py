@@ -4,6 +4,7 @@ from .models import Author, Book, Member, Loan
 from .serializers import AuthorSerializer, BookSerializer, MemberSerializer, LoanSerializer
 from rest_framework.decorators import action
 from django.utils import timezone
+from django.db.models import Count, Q
 from .tasks import send_loan_notification
 
 class AuthorViewSet(viewsets.ModelViewSet):
@@ -11,7 +12,7 @@ class AuthorViewSet(viewsets.ModelViewSet):
     serializer_class = AuthorSerializer
 
 class BookViewSet(viewsets.ModelViewSet):
-    queryset = Book.objects.all()
+    queryset = Book.objects.all().select_related("author")
     serializer_class = BookSerializer
 
     @action(detail=True, methods=['post'])
@@ -49,6 +50,48 @@ class MemberViewSet(viewsets.ModelViewSet):
     queryset = Member.objects.all()
     serializer_class = MemberSerializer
 
+    @action(detail=False, methods=['get'])
+    def top_active(self, request):
+        top_members = Member.objects.annotate(active_loans=Count('loans', filter=Q(loans__is_returned=False))).order_by("-active_loans")[:5]
+        data = []
+        for member in top_members:
+            member_data = self.get_serializer(member).data
+            member_data["active_loans"] = member.active_loans
+            data.append(member_data)
+        
+        return Response(data=data)
+
+
+
 class LoanViewSet(viewsets.ModelViewSet):
     queryset = Loan.objects.all()
     serializer_class = LoanSerializer
+
+    @action(detail=True, methods=['post'])
+    def extend_due_date(self, request, pk=None):
+        try:
+            loan = Loan.objects.get(pk=pk)
+        except Loan.NotFound:
+            return Response({"status": "Invalid loan object"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if loan.is_returned:
+            return Response({"status": "Loan already closed"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        current_time = timezone.now().date()
+
+        if loan.due_date < current_time:
+            return Response({"status": "Loan already passed its due date"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        additional_days = int(request.data.additional_days)
+
+        if additional_days < 1:
+            return Response({"status": "Additional days should be greater than 1"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+        loan.due_date += additional_days
+        loan.save()
+
+        data = self.get_serializer(loan).data
+        return Response(data)
+
+

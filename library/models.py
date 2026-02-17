@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.conf import settings
+from django.utils import timezone
 
 class Author(models.Model):
     first_name = models.CharField(max_length=100)
@@ -40,7 +42,15 @@ class Loan(models.Model):
     member = models.ForeignKey(Member, related_name='loans', on_delete=models.CASCADE)
     loan_date = models.DateField(auto_now_add=True)
     return_date = models.DateField(null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
     is_returned = models.BooleanField(default=False)
+
+    # adding due date at the time of loan creation
+    def save(self, *args, **kwargs):
+        if not self.due_date:
+            print("saving due date-")
+            self.due_date = timezone.now() + timezone.timedelta(days=settings.LOAN_DUE_DATE)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.book.title} loaned to {self.member.user.username}"
